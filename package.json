@@ -1,0 +1,18 @@
+{
+  "name": "parabole-ai",
+  "version": "1.0.0",
+  "description": "Générateur autonome d'histoires bibliques",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.3.2",
+    "node-cron": "^3.0.3",
+    "puppeteer": "^22.7.1"
+  }
+}

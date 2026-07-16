@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: parabole-bible-service
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false # Tu devras coller ta clé de base de données sur l'interface Render
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: PUBLIC_VAPID_KEY
+        sync: false
+      - key: PRIVATE_VAPID_KEY
+        sync: false
+      - key: EMAIL_CONTACT
+        sync: false
+      - key: HUGGINGFACE_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

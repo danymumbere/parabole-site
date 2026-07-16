@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parabole - Histoires Inspirantes</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <a href="/" class="logo">Parabole</a>
+        <div class="subscribe-nav">
+            <span style="color: var(--text-muted); margin-right: 10px; font-size: 0.9em;">Ne manquez aucune histoire</span>
+            <button id="pushSubscribeBtn" class="btn btn-primary">s'abonner</button>
+            <p id="pushMessage" style="margin-top: 10px;"></p>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- En-tête -->
+        <div style="text-align: center; margin-bottom: 3rem;">
+            <h1 style="color: var(--primary); font-size: 2.5rem;">De nouvelles histoires, chaque jour.</h1>
+            <p style="color: var(--text-muted); margin-top: 1rem;">Lisez et téléchargez nos récits illustrés gratuitement.</p>
+        </div>
+        
+        <!-- Grille des histoires avec accès direct au PDF -->
+        <div class="grid" id="stories-grid">
+            <!-- Injecté par JavaScript -->
+        </div>
+
+        <!-- Section d'abonnement express en bas de page -->
+        <button id="pushSubscribeBtn" class="btn btn-primary">s'abonner</button>
+        <p id="pushMessage" style="margin-top: 10px;"></p>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
