@@ -28,9 +28,35 @@
             <!-- Injecté par JavaScript -->
         </div>
 
-        <!-- Section d'abonnement express en bas de page -->
-        <button id="pushSubscribeBtn" class="btn btn-primary">s'abonner</button>
-        <p id="pushMessage" style="margin-top: 10px;"></p>
+        <!-- Section Interactions (Abonnement & Dons) -->
+        <div class="interactions-container">
+            <!-- Abonnement Express -->
+            <div id="subscribe-section" class="interactive-box">
+                <h3 style="color: var(--primary); margin-bottom: 1rem;">🔔 Recevoir les nouveautés</h3>
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.9em;">
+                    Soyez notifié directement sur votre appareil à chaque nouvelle parution.
+                </p>
+                <button id="pushSubscribeBtn" class="btn btn-primary" style="width: 100%;">Activer les notifications</button>
+                <p id="pushMessage" style="margin-top: 10px; font-weight: bold; font-size: 0.9em;"></p>
+            </div>
+
+            <!-- Faire un Don -->
+            <div class="interactive-box donation-menu">
+                <h3>💛 Soutenir le projet</h3>
+                <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.9em;">
+                    Ce projet est gratuit et indépendant. Un don aide à payer les serveurs et les APIs d'IA.
+                </p>
+                <div class="grid-networks">
+                    <button onclick="preparerDon('Vodacom', '*1222#')" style="background:#e60000">M-Pesa</button>
+                    <button onclick="preparerDon('Airtel', '*501#')" style="background:#ff0000">Airtel</button>
+                    <button onclick="preparerDon('Orange', '*144#')" style="background:#ff6600">Orange</button>
+                    <button onclick="preparerDon('Africell', '*111#')" style="background:#ffce00; color:black">Africell</button>
+                </div>
+                <div id="instructions-don" class="hidden">
+                    <p id="texte-instruction" style="font-size:0.8em; padding:10px; border:1px solid #ddd; margin-top:5px; border-radius: 5px; background: #fdfdfd;"></p>
+                </div>
+            </div>
+        </div>
     </main>
 
     <script src="app.js"></script>
