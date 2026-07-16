@@ -13,6 +13,7 @@
     "express": "^4.19.2",
     "mongoose": "^8.3.2",
     "node-cron": "^3.0.3",
-    "puppeteer": "^22.7.1"
+    "puppeteer": "^22.7.1",
+    "web-push": "^3.6.7"
   }
 }
