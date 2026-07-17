@@ -71,6 +71,7 @@ async function runParabolePipeline() {
         // 2. Génération de la couverture
         console.log("2. Création de la couverture...");
         const coverPrompt = `Cover art for a book titled '${storyData.titre}'. Main character: ${storyData.consistance.personnagePrincipal}.`;
+        // CORRECTION : On l'appelle bien tempCoverUrl
         const tempCoverUrl = await generateImage(coverPrompt);
 
         // --- NOUVELLE ÉTAPE : SÉCURISATION DE L'IMAGE ---
@@ -90,11 +91,13 @@ async function runParabolePipeline() {
         // 4. Génération du PDF
         console.log("4. Assemblage du PDF...");
         const filename = `parabole-${Date.now()}.pdf`;
-        const pdfPath = cloudPdfUrl;
+        const pdfPath = `./public/pdfs/${filename}`; // p minuscule
+        // CORRECTION : On utilise pdfPath
         await createPDF(storyData, cloudCoverUrl, scenesWithImages, pdfPath);
 
         // --- NOUVELLE ÉTAPE : UPLOAD CLOUD ---
         console.log("4.5. Envoi du PDF vers le Cloud...");
+        // CORRECTION : On utilise pdfPath
         const cloudPdfUrl = await uploadToCloud(pdfPath, 'parabole_pdfs');
         console.log(`PDF sécurisé à l'adresse : ${cloudPdfUrl}`);
 
@@ -113,7 +116,7 @@ async function runParabolePipeline() {
         const payload = JSON.stringify({
             title: "Nouvelle Parabole Disponible !",
             body: `L'histoire du jour inspirée de ${storyData.verset} vient de sortir.`,
-            url: `/pdfs/${filename}` // L'URL à ouvrir quand l'utilisateur clique
+            url: cloudPdfUrl // CORRECTION : Redirige vers Cloudinary
         });
 
         const subscribers = await Subscriber.find();
@@ -123,7 +126,6 @@ async function runParabolePipeline() {
             webpush.sendNotification(sub.subscription, payload)
             .catch(err => {
                 console.error("Erreur d'envoi à un abonné (peut-être désinscrit):", err);
-                // Optionnel : supprimer l'abonné de la base s'il a révoqué l'accès (status 410)
                 if(err.statusCode === 410) {
                     return Subscriber.deleteOne({ _id: sub._id });
                 }
