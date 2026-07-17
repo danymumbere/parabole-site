@@ -94,7 +94,7 @@ async function runParabolePipeline() {
         const filename = `parabole-${Date.now()}.pdf`;
         const pdfPath = `./public/pdfs/${filename}`; // p minuscule
         // CORRECTION : On utilise pdfPath
-        await createPDF(storyData, cloudCoverUrl, scenesWithImages, pdfPath);
+        await createPDF(storyData, tempCoverUrl, scenesWithImages, pdfPath);
 
         // --- NOUVELLE ÉTAPE : UPLOAD CLOUD ---
         console.log("4.5. Envoi du PDF vers le Cloud...");
