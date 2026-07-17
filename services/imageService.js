@@ -10,7 +10,7 @@ async function generateImage(prompt, referenceImage = null) {
     try {
         // Remplacement par le modèle open-source SDXL (Stable Diffusion XL)
         const response = await axios.post(
-            'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
+            'https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0',
             {
                 inputs: finalPrompt,
                 // SDXL gère très bien le format par défaut, on peut retirer width/height 
