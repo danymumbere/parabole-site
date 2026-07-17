@@ -1,52 +1,40 @@
-const axios = require('axios');
+const { HfInference } = require('@huggingface/inference');
 const fs = require('fs').promises; 
 const path = require('path');
-const os = require('os'); // Ajout de 'os' pour gérer les dossiers temporaires
+const os = require('os');
 
-async function generateImage(prompt, referenceImage = null) {
+// Initialisation du client officiel avec ta clé API
+const hf = new HfInference(process.env.HUGGINGFACE_API_KEY);
+
+async function generateImage(prompt) {
     const styleModifier = "full frame composition, modern minimalist graphic design, 2D flat illustration, not 3D, 16:9 aspect ratio";
     const finalPrompt = `${prompt}, ${styleModifier}`;
 
     try {
-        // Remplacement par le modèle open-source SDXL (Stable Diffusion XL)
-        const response = await axios.post(
-            'https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0',
-            {
-                inputs: finalPrompt,
-                // SDXL gère très bien le format par défaut, on peut retirer width/height 
-                // pour éviter les conflits d'API avec les comptes gratuits.
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-                    'Content-Type': 'application/json',
-                    'Accept': 'image/png'
-                },
-                responseType: 'arraybuffer' 
+        // Le SDK gère les URL et trouve automatiquement un fournisseur actif
+        const blob = await hf.textToImage({
+            inputs: finalPrompt,
+            model: 'black-forest-labs/FLUX.1-schnell',
+            parameters: {
+                num_inference_steps: 4 // FLUX.1-schnell est optimisé pour 4 étapes
             }
-        );
+        });
 
-        const fileName = `cover_${Date.now()}.png`;
+        // Conversion de la réponse (Blob) en fichier exploitable (Buffer)
+        const buffer = Buffer.from(await blob.arrayBuffer());
         
-        // Utilisation de os.tmpdir() : C'est le dossier temporaire sécurisé de Render.
-        // Cela évite l'erreur "ENOENT: no such file or directory, open '.../outputs/...'"
+        const fileName = `cover_${Date.now()}.png`;
         const imagePath = path.join(os.tmpdir(), fileName); 
 
-        await fs.writeFile(imagePath, response.data);
+        await fs.writeFile(imagePath, buffer);
         
         console.log(`✅ Image générée avec succès : ${imagePath}`);
 
-        // On retourne le chemin. Plus tard, ton cloudService.js l'enverra sur Cloudinary
-        // et Render supprimera automatiquement ce fichier temporaire.
         return imagePath; 
 
     } catch (error) {
-        const errorMsg = error.response && error.response.data
-            ? Buffer.from(error.response.data).toString('utf-8') 
-            : error.message;
-            
-        console.error("Erreur Image:", errorMsg);
-        throw new Error(`Échec de la génération de l'image: ${errorMsg}`);
+        console.error("Erreur Image:", error.message);
+        throw new Error(`Échec de la génération de l'image: ${error.message}`);
     }
 }
 
