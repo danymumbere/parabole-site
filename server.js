@@ -147,6 +147,16 @@ cron.schedule('0 18 * * *', () => {
     timezone: "Africa/Bujumbura" // Fuseau horaire UTC+2 équivalent à Goma
 });
 
+// Route temporaire de secours en GET (accessible directement depuis ton navigateur)
+app.get('/api/generate-now', async (req, res) => {
+    try {
+        runParabolePipeline(); // Lance la pipeline en arrière-plan
+        res.send("<h1>🚀 Pipeline lancée ! Regarde tes logs sur Render.</h1>");
+    } catch (error) {
+        res.status(500).send("Erreur lors du lancement : " + error.message);
+    }
+});
+
 // Route manuelle pour déclencher la pipeline
 app.post('/api/generate', async (req, res) => {
     runParabolePipeline(); // Non-bloquant
