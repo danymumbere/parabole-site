@@ -84,7 +84,8 @@ async function runParabolePipeline() {
         const scenesWithImages = [];
         for (const scene of storyData.scenes) {
             console.log('Illustration de la scène...');
-            const imageUrl = await generateImage(scene.imagePrompt);
+            // MAGIE ICI : On passe l'URL de la couverture (cloudCoverUrl) comme référence pour garder le même style/personnage !
+            const imageUrl = await generateImage(scene.imagePrompt, cloudCoverUrl);
             scenesWithImages.push({ texte: scene.texte, imageUrl });
         }
 
