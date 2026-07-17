@@ -86,7 +86,14 @@ async function createPDF(storyData, coverUrl, scenesWithImages, outputPath) {
     </html>
     `;
 
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+        headless: "new", // ou true
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox'
+        ],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
+    });
     const page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
     
