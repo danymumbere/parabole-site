@@ -141,12 +141,12 @@ async function runParabolePipeline() {
 }
 
 // Planification de la tâche : S'exécute tous les jours à 18h00 (Heure d'Afrique Centrale)
-cron.schedule('0 18 * * *', () => {
-    runParabolePipeline();
-}, {
-    scheduled: true,
-    timezone: "Africa/Bujumbura" // Fuseau horaire UTC+2 équivalent à Goma
-});
+//cron.schedule('0 18 * * *', () => {
+//    runParabolePipeline();
+//}, {
+//    scheduled: true,
+//    timezone: "Africa/Bujumbura" // Fuseau horaire UTC+2 équivalent à Goma
+//});
 
 // Route temporaire de secours en GET (accessible directement depuis ton navigateur)
 app.get('/api/generate-now', async (req, res) => {

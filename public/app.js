@@ -23,43 +23,49 @@ async function renderStories() {
     }
 }
 
-const publicVapidKey = 'BLGgtnL-jHPRryVaWdjqCThVyA_Hk7XL_faNpxXWeBZyLqb4J4YOIFPw435gKqPItJfQ0yarz1-PmmbYEppRp6A'; // Copie ta clé publique ici
+const publicVapidKey = 'BLGgtnL-jHPRryVaWdjqCThVyA_Hk7XL_faNpxXWeBZyLqb4J4YOIFPw435gKqPItJfQ0yarz1-PmmbYEppRp6A'; // Ta clé publique
 
-document.getElementById('pushSubscribeBtn')?.addEventListener('click', async () => {
-    const messageEl = document.getElementById('pushMessage');
+// CORRECTION : On sélectionne toutes les classes et on boucle dessus
+const subscribeBtns = document.querySelectorAll('.btn-subscribe');
+const messageEls = document.querySelectorAll('.msg-subscribe');
 
-    // 1. Vérifier si le navigateur supporte les Service Workers et le Push
-    if ('serviceWorker' in navigator && 'PushManager' in window) {
-        try {
-            // 2. Enregistrer le Service Worker
-            const register = await navigator.serviceWorker.register('/sw.js', {
-                scope: '/'
-            });
+subscribeBtns.forEach((btn, index) => {
+    btn.addEventListener('click', async () => {
+        const messageEl = messageEls[index]; // Récupère le message correspondant au bouton cliqué
 
-            // 3. Demander la permission à l'utilisateur et s'abonner au Push Manager
-            const subscription = await register.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
-            });
+        // 1. Vérifier si le navigateur supporte les Service Workers et le Push
+        if ('serviceWorker' in navigator && 'PushManager' in window) {
+            try {
+                // 2. Enregistrer le Service Worker
+                const register = await navigator.serviceWorker.register('/sw.js', {
+                    scope: '/'
+                });
 
-            // 4. Envoyer l'abonnement à notre serveur Node.js
-            await fetch('/api/subscribe', {
-                method: 'POST',
-                body: JSON.stringify(subscription),
-                headers: { 'Content-Type': 'application/json' }
-            });
+                // 3. Demander la permission à l'utilisateur et s'abonner au Push Manager
+                const subscription = await register.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
+                });
 
-            messageEl.innerText = "Notifications activées avec succès !";
-            messageEl.style.color = "green";
-            
-        } catch (error) {
-            console.error("Erreur d'abonnement:", error);
-            messageEl.innerText = "L'activation a échoué (avez-vous bloqué les permissions ?)";
-            messageEl.style.color = "red";
+                // 4. Envoyer l'abonnement à notre serveur Node.js
+                await fetch('/api/subscribe', {
+                    method: 'POST',
+                    body: JSON.stringify(subscription),
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                messageEl.innerText = "Notifications activées avec succès !";
+                messageEl.style.color = "green";
+                
+            } catch (error) {
+                console.error("Erreur d'abonnement:", error);
+                messageEl.innerText = "L'activation a échoué (avez-vous bloqué les permissions ?)";
+                messageEl.style.color = "red";
+            }
+        } else {
+            messageEl.innerText = "Les notifications ne sont pas supportées par votre navigateur.";
         }
-    } else {
-        messageEl.innerText = "Les notifications ne sont pas supportées par votre navigateur.";
-    }
+    });
 });
 
 // Fonction utilitaire requise par web-push pour formater la clé publique

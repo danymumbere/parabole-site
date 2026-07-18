@@ -11,8 +11,9 @@
         <a href="/" class="logo">Parabole</a>
         <div class="subscribe-nav">
             <span style="color: var(--text-muted); margin-right: 10px; font-size: 0.9em;">Ne manquez aucune histoire</span>
-            <button id="pushSubscribeBtn" class="btn btn-primary">s'abonner</button>
-            <p id="pushMessage" style="margin-top: 10px;"></p>
+            <!-- CORRECTION : id devient class -->
+            <button class="btn btn-primary btn-subscribe">s'abonner</button>
+            <p class="msg-subscribe" style="margin-top: 10px;"></p>
         </div>
     </header>
 
@@ -36,8 +37,9 @@
                 <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.9em;">
                     Soyez notifié directement sur votre appareil à chaque nouvelle parution.
                 </p>
-                <button id="pushSubscribeBtn" class="btn btn-primary" style="width: 100%;">Activer les notifications</button>
-                <p id="pushMessage" style="margin-top: 10px; font-weight: bold; font-size: 0.9em;"></p>
+                <!-- CORRECTION : id devient class -->
+                <button class="btn btn-primary btn-subscribe" style="width: 100%;">Activer les notifications</button>
+                <p class="msg-subscribe" style="margin-top: 10px; font-weight: bold; font-size: 0.9em;"></p>
             </div>
 
             <!-- Faire un Don -->
