@@ -4,7 +4,7 @@ async function generateStory() {
     const themes = ["l'espoir", "le courage", "le pardon", "la patience", "la foi dans l'épreuve", "la joie partagée", "la fidélité"];
     const randomTheme = themes[Math.floor(Math.random() * themes.length)];
 
-    const prompt = `Trouve un verset ou une séquence biblique intéressante ou inspirante. Ayant compris l'idée ou le message qui en découle, tu as comme objectif de transmettre cette idée, non par des mots, mais implicitement, par une histoire. Tu tentera de t'exprimer comme Jésus expliquait au moyen de paraboles.  
+    const prompt = `Trouve un verset ou une séquence biblique intéressante ou inspirante. Ayant compris l'idée ou le message qui en découle, tu as comme objectif de transmettre cette idée implicitement par une histoire moderne. Tu le fera comme Jésus expliquait au moyen de paraboles.  
     IMPORTANT: Choisis un verset qui parle de : ${randomTheme}. 
     Le personnage principal DOIT avoir un nom original.
     Renvoie UNIQUEMENT un JSON strict avec cette structure :
