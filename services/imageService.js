@@ -4,47 +4,54 @@ const path = require('path');
 const os = require('os');
 const axios = require('axios');
 
-// Utilise la clé API Hugging Face (à configurer dans votre environnement)
+// Utilise la clé API Hugging Face (Plan de secours)
 const hf = new HfInference(process.env.HUGGINGFACE_API_KEY);
 
-// Paramètre optionnel "referenceImageUrl"
 async function generateImage(prompt, referenceImageUrl = null) {
-    // Maintien d'un cadrage large et aéré sans gros plans
     const styleModifier = "full frame composition, wide angle, broad camera perspective, no close-ups, modern minimalist graphic design, 2D flat illustration, not 3D, 16:9 aspect ratio";
     let finalPrompt = `${prompt}, ${styleModifier}`;
 
+    // ==========================================
+    // PLAN A : Pollinations.ai Image (Priorité)
+    // ==========================================
     try {
-        console.log("Tentative de génération via les serveurs Hugging Face (Inference API)...");
+        console.log("Tentative de génération d'image via Pollinations.ai (Plan A)...");
         
-        const blob = await hf.textToImage({
-            inputs: finalPrompt,
-            model: 'stabilityai/stable-diffusion-xl-base-1.0', 
-            parameters: { num_inference_steps: 30 }
-        });
-
-        // Le "await" est bien présent, la conversion en Buffer se fera parfaitement
-        const buffer = Buffer.from(await blob.arrayBuffer());
-        return await saveImageFile(buffer);
+        if (referenceImageUrl) {
+            console.log("Note : L'image de référence est ignorée par Pollinations pour éviter la génération de texte parasite.");
+        }
+        
+        const encodedPrompt = encodeURIComponent(finalPrompt); 
+        const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=576&nologo=true&seed=${Math.floor(Math.random() * 10000)}`;
+        
+        const response = await axios.get(url, { responseType: 'arraybuffer' });
+        console.log("✅ Image générée avec succès via Pollinations.ai !");
+        
+        return await saveImageFile(response.data);
 
     } catch (error) {
-        console.warn(`⚠️ Hugging Face indisponible ou limite atteinte (${error.message}). Basculement sur Pollinations.ai...`);
+        console.warn(`⚠️ Pollinations.ai indisponible (${error.message}). Basculement sur Hugging Face (Plan B)...`);
         
+        // ==========================================
+        // PLAN B : Hugging Face SDXL (Secours)
+        // ==========================================
         try {
-            // CORRECTION : Pollinations est un modèle Texte-vers-Image pur.
-            // On ne lui passe pas l'URL de référence pour ne pas polluer le texte.
-            if (referenceImageUrl) {
-                console.log("Note : L'image de référence est ignorée par Pollinations pour éviter la génération de texte parasite.");
-            }
+            console.log("Tentative de génération via Hugging Face (Inference API)...");
             
-            const encodedPrompt = encodeURIComponent(finalPrompt); 
-            const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=576&nologo=true&seed=${Math.floor(Math.random() * 10000)}`;
+            const blob = await hf.textToImage({
+                inputs: finalPrompt,
+                model: 'stabilityai/stable-diffusion-xl-base-1.0', 
+                parameters: { num_inference_steps: 30 }
+            });
+
+            const buffer = Buffer.from(await blob.arrayBuffer());
+            console.log("✅ Image générée avec succès via Hugging Face !");
             
-            const response = await axios.get(url, { responseType: 'arraybuffer' });
-            return await saveImageFile(response.data);
+            return await saveImageFile(buffer);
             
         } catch (fallbackError) {
-            console.error("❌ Erreur critique Pollinations:", fallbackError.message);
-            throw new Error(`Échec total de la génération d'image.`);
+            console.error("❌ Erreur critique Hugging Face:", fallbackError.message);
+            throw new Error(`Échec total de la génération d'image (Pollinations et Hugging Face inaccessibles ou quotas atteints).`);
         }
     }
 }
