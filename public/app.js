@@ -86,6 +86,13 @@ function urlBase64ToUint8Array(base64String) {
 
 const DON_NUMBER = "0906253050";
 
+// Par sécurité : s'assurer que le modal est masqué dès le chargement du script
+// (évite tout flash visible si le navigateur affiche le HTML avant le CSS).
+(function ensureModalHiddenOnInit() {
+    const modal = document.getElementById('modal-coup-de-pouce');
+    if (modal) modal.classList.add('hidden');
+})();
+
 // Ouvre le modal
 function openCoupDePouceModal() {
     const modal = document.getElementById('modal-coup-de-pouce');

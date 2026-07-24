@@ -187,7 +187,8 @@ header {
 }
 
 .hidden {
-    display: none;
+    /* !important pour garantir la priorité sur .modal-overlay { display: flex } */
+    display: none !important;
 }
 
 /* =====================================================================
