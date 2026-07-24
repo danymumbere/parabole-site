@@ -14,6 +14,8 @@
             <!-- CORRECTION : id devient class -->
             <button class="btn btn-primary btn-subscribe">s'abonner</button>
             <p class="msg-subscribe" style="margin-top: 10px;"></p>
+            <button class="btn btn-coup-de-pouce" id="btn-coup-de-pouce-header">✋ Donner un coup de pouce</button>
+            <a href="/requests.html" class="link-suivi">Suivre les requêtes</a>
         </div>
     </header>
 
@@ -42,24 +44,108 @@
                 <p class="msg-subscribe" style="margin-top: 10px; font-weight: bold; font-size: 0.9em;"></p>
             </div>
 
-            <!-- Faire un Don -->
+            <!-- Donner un coup de pouce (anciennement Faire un Don) -->
             <div class="interactive-box donation-menu">
                 <h3>💛 Soutenir le projet</h3>
                 <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.9em;">
-                    Ce projet est gratuit et indépendant. Un don aide à continuer à l'améliorer et à le maintenir.
+                    Proposez une amélioration, signalez un bug et soutenez le développement du site.
                 </p>
-                <div class="grid-networks">
-                    <button onclick="preparerDon('Vodacom', '*1222#')" style="background:#e60000">M-Pesa</button>
-                    <button onclick="preparerDon('Airtel', '*501#')" style="background:#ff0000">Airtel</button>
-                    <button onclick="preparerDon('Orange', '*144#')" style="background:#ff6600">Orange</button>
-                    <button onclick="preparerDon('Africell', '*111#')" style="background:#ffce00; color:black">Africell</button>
-                </div>
-                <div id="instructions-don" class="hidden">
-                    <p id="texte-instruction" style="font-size:0.8em; padding:10px; border:1px solid #ddd; margin-top:5px; border-radius: 5px; background: #fdfdfd;"></p>
-                </div>
+                <button class="btn btn-primary" id="btn-coup-de-pouce-main" style="width: 100%;">✋ Donner un coup de pouce</button>
             </div>
         </div>
     </main>
+
+    <!-- Modal "Donner un coup de pouce" -->
+    <div class="modal-overlay hidden" id="modal-coup-de-pouce">
+        <div class="modal-box">
+            <button class="modal-close" id="modal-close-btn" aria-label="Fermer">&times;</button>
+
+            <!-- Étape 1 : Instructions + Formulaire -->
+            <div id="modal-form-step">
+                <h2 style="color: var(--primary); margin-bottom: 0.5rem;">✋ Donner un coup de pouce</h2>
+                <p style="color: var(--text-muted); font-size: 0.9em; margin-bottom: 1.25rem;">
+                    Voici comment nous soutenir activement :
+                </p>
+                <ol class="instructions">
+                    <li><strong>Décrivez la modification</strong> que vous aimeriez voir sur le site (un bug, une amélioration, une nouvelle fonctionnalité technique).</li>
+                    <li><strong>Choisissez la nature</strong> de votre demande parmi les 3 catégories ci-dessous — chacune fixe le don minimum.</li>
+                    <li><strong>Effectuez votre don</strong> via l'un des réseaux (M-Pesa, Airtel, Orange, Africell) au numéro affiché, pour un montant au moins égal au minimum de la catégorie choisie.</li>
+                    <li><strong>Indiquez le montant envoyé et la référence</strong> de la transaction (le numéro/ID de confirmation reçu par SMS).</li>
+                    <li><strong>Envoyez votre requête.</strong> Un <strong>code unique</strong> s'affiche : <strong>conservez-le</strong>, il vous permettra plus tard de confirmer que la modification a été vue et faite.</li>
+                </ol>
+                <p class="instructions-note">
+                    Une fois envoyée, votre requête apparaît sur la page de suivi. Dès que le développeur réalise la modification, le 1er accusé ✓✓ s'active. Quand vous constatez le changement, utilisez votre code pour activer le 2e accusé ✓✓ (bleu) = demande confirmée.
+                </p>
+
+                <form id="form-requete">
+                    <!-- Catégorie -->
+                    <label class="field-label">Nature de la demande</label>
+                    <div class="category-cards">
+                        <label class="category-card">
+                            <input type="radio" name="category" value="bug" required>
+                            <span class="cat-title">🐞 Bug / erreur</span>
+                            <span class="cat-amount">1 $ min</span>
+                        </label>
+                        <label class="category-card">
+                            <input type="radio" name="category" value="ux" required>
+                            <span class="cat-title">🎨 Expérience utilisateur</span>
+                            <span class="cat-amount">5 $ min</span>
+                        </label>
+                        <label class="category-card">
+                            <input type="radio" name="category" value="tech" required>
+                            <span class="cat-title">⚙️ Architecturale / technique</span>
+                            <span class="cat-amount">10 $ min</span>
+                        </label>
+                    </div>
+
+                    <!-- Message -->
+                    <label class="field-label" for="req-message">Votre message (ce que vous voulez voir changer)</label>
+                    <textarea id="req-message" name="message" rows="4" placeholder="Décrivez la modification souhaitée..." required></textarea>
+
+                    <!-- Réseau -->
+                    <label class="field-label">Réseau pour le don</label>
+                    <div class="grid-networks" id="network-picker">
+                        <button type="button" data-network="M-Pesa" data-code="*1222#" style="background:#e60000">M-Pesa</button>
+                        <button type="button" data-network="Airtel" data-code="*501#" style="background:#ff0000">Airtel</button>
+                        <button type="button" data-network="Orange" data-code="*144#" style="background:#ff6600">Orange</button>
+                        <button type="button" data-network="Africell" data-code="*111#" style="background:#ffce00; color:black">Africell</button>
+                    </div>
+                    <input type="hidden" id="req-network" name="network">
+                    <p class="net-hint" id="net-hint"></p>
+
+                    <!-- Montant + Référence -->
+                    <div class="amount-ref-row">
+                        <div>
+                            <label class="field-label" for="req-amount">Montant envoyé ($)</label>
+                            <input type="number" id="req-amount" name="amount" min="1" step="0.01" placeholder="ex: 5" required>
+                        </div>
+                        <div>
+                            <label class="field-label" for="req-ref">Référence de transaction</label>
+                            <input type="text" id="req-ref" name="transactionRef" placeholder="ex: QP8Z4K (SMS de confirmation)">
+                        </div>
+                    </div>
+
+                    <p class="form-error" id="form-error"></p>
+                    <button type="submit" class="btn btn-primary" id="form-submit-btn" style="width: 100%; margin-top: 0.5rem;">Envoyer ma requête</button>
+                </form>
+            </div>
+
+            <!-- Étape 2 : Confirmation avec le code -->
+            <div id="modal-confirm-step" class="hidden">
+                <div class="confirm-icon">✅</div>
+                <h2 style="color: var(--primary); text-align: center;">Requête envoyée !</h2>
+                <p style="color: var(--text-muted); text-align: center; margin: 0.5rem 0 1.25rem;">
+                    Conservez précieusement ce code. Il vous permettra de confirmer que votre modification a été vue et faite.
+                </p>
+                <div class="user-code-box">
+                    <span class="user-code-label">Votre code unique</span>
+                    <div class="user-code-value" id="user-code-display">------</div>
+                    <button type="button" class="btn btn-outline" id="copy-code-btn" style="margin-top: 0.75rem;">📋 Copier le code</button>
+                </div>
+                <a href="/requests.html" class="btn btn-primary" style="display: block; text-align: center; margin-top: 1rem;">Voir ma requête sur la page de suivi →</a>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>

@@ -8,6 +8,8 @@ const { generateImage } = require('./services/imageService');
 const { createPDF } = require('./services/pdfService');
 const Story = require('./models/Story');
 const Subscriber = require('./models/Subscriber');
+const Request = require('./models/Request');
+const { CATEGORY_MIN_AMOUNT } = require('./models/Request');
 const webpush = require('web-push');
 const { uploadToCloud, uploadImageFromUrl } = require('./services/cloudService');
 
@@ -36,6 +38,153 @@ app.post('/api/subscribe', async (req, res) => {
         res.status(201).json({ message: "Abonnement Push réussi !" });
     } catch (error) {
         console.error("Erreur d'abonnement:", error);
+        res.status(500).json({ error: "Erreur serveur" });
+    }
+});
+
+// --- ROUTES API POUR LE SYSTÈME DE REQUÊTES ("DONNER UN COUP DE POUCE") ---
+
+// Génère un code utilisateur unique de 6 caractères alphanumériques (sans caractères ambigus)
+const AMBIGUOUS_CHARS = '0O1Il';
+function generateUserCode() {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let code;
+    do {
+        code = '';
+        for (let i = 0; i < 6; i++) {
+            code += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+    } while (AMBIGUOUS_CHARS.split('').some(c => code.includes(c)));
+    return code;
+}
+
+// Labels des catégories pour le tri et l'affichage
+const CATEGORY_LABELS = {
+    bug: 'Bug / erreur',
+    ux: 'Expérience utilisateur',
+    tech: 'Architecturale / technique'
+};
+// Ordre de priorité d'affichage sur la page de suivi
+const CATEGORY_ORDER = { bug: 1, ux: 2, tech: 3 };
+
+// Création d'une nouvelle requête
+app.post('/api/requests', async (req, res) => {
+    try {
+        const { category, message, amount, network, transactionRef } = req.body;
+
+        // Validation des champs requis
+        if (!category || !message || amount === undefined) {
+            return res.status(400).json({ error: "Catégorie, message et montant sont requis." });
+        }
+        if (!CATEGORY_MIN_AMOUNT[category]) {
+            return res.status(400).json({ error: "Catégorie invalide." });
+        }
+
+        const minAmount = CATEGORY_MIN_AMOUNT[category];
+
+        // Vérification du montant minimum par catégorie
+        if (Number(amount) < minAmount) {
+            return res.status(400).json({
+                error: `Le montant minimum pour cette catégorie est de ${minAmount} $.`,
+                minAmount
+            });
+        }
+
+        // Génération d'un code utilisateur unique (avec vérification d'unicité en BD)
+        let userCode;
+        let attempts = 0;
+        while (attempts < 10) {
+            userCode = generateUserCode();
+            const exists = await Request.findOne({ userCode });
+            if (!exists) break;
+            attempts++;
+        }
+
+        const newRequest = new Request({
+            category,
+            message: String(message).trim(),
+            amount: Number(amount),
+            network: network ? String(network) : undefined,
+            transactionRef: transactionRef ? String(transactionRef).trim() : undefined,
+            amountOk: Number(amount) >= minAmount,
+            userCode
+        });
+
+        await newRequest.save();
+
+        res.status(201).json({
+            message: "Requête envoyée avec succès.",
+            id: newRequest._id,
+            userCode,
+            categoryLabel: CATEGORY_LABELS[category]
+        });
+    } catch (error) {
+        console.error("Erreur lors de la création de la requête:", error);
+        res.status(500).json({ error: "Erreur serveur" });
+    }
+});
+
+// Récupération des requêtes, triées : bug, ux, tech, puis confirmées
+app.get('/api/requests', async (req, res) => {
+    try {
+        const requests = await Request.find().lean();
+        const sorted = requests.sort((a, b) => {
+            // "Confirmé" = les deux checks cochés -> va à la fin
+            const aConfirmed = a.devCheck && a.userCheck;
+            const bConfirmed = b.devCheck && b.userCheck;
+            if (aConfirmed !== bConfirmed) return aConfirmed ? 1 : -1;
+            // Même statut confirmé/non -> tri par priorité de catégorie
+            const catDiff = CATEGORY_ORDER[a.category] - CATEGORY_ORDER[b.category];
+            if (catDiff !== 0) return catDiff;
+            // Même catégorie -> du plus ancien au plus récent (file d'attente)
+            return new Date(a.createdAt) - new Date(b.createdAt);
+        });
+        res.status(200).json(sorted.map(r => ({ ...r, categoryLabel: CATEGORY_LABELS[r.category] })));
+    } catch (error) {
+        console.error("Erreur lors de la récupération des requêtes:", error);
+        res.status(500).json({ error: "Erreur serveur" });
+    }
+});
+
+// 1er accusé de réception : le développeur a effectué la modification (protégé par DEV_CODE)
+app.post('/api/requests/:id/dev-check', async (req, res) => {
+    try {
+        const { devCode } = req.body;
+        if (!devCode || devCode !== process.env.DEV_CODE) {
+            return res.status(403).json({ error: "Code développeur incorrect." });
+        }
+        const request = await Request.findById(req.params.id);
+        if (!request) return res.status(404).json({ error: "Requête introuvable." });
+
+        request.devCheck = !request.devCheck;
+        request.devCheckAt = request.devCheck ? new Date() : null;
+        await request.save();
+
+        res.status(200).json({ devCheck: request.devCheck, message: "Accusé développeur mis à jour." });
+    } catch (error) {
+        console.error("Erreur dev-check:", error);
+        res.status(500).json({ error: "Erreur serveur" });
+    }
+});
+
+// 2e accusé de réception : l'utilisateur a constaté la modification (protégé par son code unique)
+app.post('/api/requests/:id/user-check', async (req, res) => {
+    try {
+        const { userCode } = req.body;
+        const request = await Request.findById(req.params.id);
+        if (!request) return res.status(404).json({ error: "Requête introuvable." });
+
+        if (!userCode || userCode.toUpperCase() !== request.userCode) {
+            return res.status(403).json({ error: "Code utilisateur incorrect." });
+        }
+
+        request.userCheck = !request.userCheck;
+        request.userCheckAt = request.userCheck ? new Date() : null;
+        await request.save();
+
+        res.status(200).json({ userCheck: request.userCheck, message: "Accusé utilisateur mis à jour." });
+    } catch (error) {
+        console.error("Erreur user-check:", error);
         res.status(500).json({ error: "Erreur serveur" });
     }
 });

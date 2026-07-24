@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parabole - Suivi des requêtes</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <a href="/" class="logo">Parabole</a>
+        <div class="subscribe-nav">
+            <a href="/index.html" class="btn btn-outline">← Retour à l'accueil</a>
+        </div>
+    </header>
+
+    <main class="container requests-container">
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <h1 style="color: var(--primary); font-size: 2rem;">Suivi des requêtes</h1>
+            <p style="color: var(--text-muted); margin-top: 0.5rem;">
+                Les demandes de la communauté, classées par priorité. Cliquez sur un accusé ✓✓ pour le mettre à jour (un code est demandé).
+            </p>
+        </div>
+
+        <!-- Légende des accusés de réception -->
+        <div class="wa-legend">
+            <span class="legend-item"><span class="checks checks-none">✓</span> Non traité</span>
+            <span class="legend-item"><span class="checks checks-dev">✓✓</span> Fait par le dev</span>
+            <span class="legend-item"><span class="checks checks-done">✓✓</span> Confirmé (vu par l'utilisateur)</span>
+        </div>
+
+        <!-- Les requêtes sont injectées ici, regroupées par catégorie -->
+        <div id="requests-list">
+            <p style="text-align:center; color: var(--text-muted);">Chargement des requêtes...</p>
+        </div>
+    </main>
+
+    <script src="requests.js"></script>
+</body>
+</html>

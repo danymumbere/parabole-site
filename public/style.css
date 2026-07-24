@@ -189,3 +189,366 @@ header {
 .hidden {
     display: none;
 }
+
+/* =====================================================================
+   BOUTON "DONNER UN COUP DE POUCE" (header) + LIEN DE SUIVI
+   ===================================================================== */
+.btn-coup-de-pouce {
+    margin-top: 8px;
+    background-color: #f39c12;
+    color: #fff;
+    font-size: 0.85em;
+    padding: 0.5rem 1rem;
+}
+.btn-coup-de-pouce:hover {
+    background-color: #d4860d;
+}
+
+.link-suivi {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.8em;
+    color: var(--accent);
+    text-decoration: none;
+}
+.link-suivi:hover {
+    text-decoration: underline;
+}
+
+/* =====================================================================
+   MODAL "DONNER UN COUP DE POUCE"
+   ===================================================================== */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.55);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 3vh 1rem;
+    overflow-y: auto;
+    z-index: 1000;
+}
+
+.modal-box {
+    position: relative;
+    background: var(--card-bg);
+    width: 100%;
+    max-width: 560px;
+    border-radius: 12px;
+    padding: 2rem 1.75rem;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    animation: modal-in 0.2s ease;
+}
+@keyframes modal-in {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.modal-close {
+    position: absolute;
+    top: 8px;
+    right: 14px;
+    background: transparent;
+    border: none;
+    font-size: 1.8rem;
+    line-height: 1;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.modal-close:hover {
+    color: var(--primary);
+}
+
+/* Instructions dans le modal */
+.instructions {
+    margin: 0 0 1rem 1.2rem;
+    padding-left: 1rem;
+    color: var(--text-main);
+    font-size: 0.92em;
+    line-height: 1.7;
+}
+.instructions li {
+    margin-bottom: 0.4rem;
+}
+.instructions-note {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    background: #f4f6f7;
+    border-left: 3px solid var(--accent);
+    padding: 0.7rem 0.9rem;
+    border-radius: 4px;
+    margin-bottom: 1.5rem;
+}
+
+/* Formulaire */
+.field-label {
+    display: block;
+    margin: 0.75rem 0 0.4rem;
+    font-weight: 500;
+    font-size: 0.9em;
+    color: var(--primary);
+}
+
+.category-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+.category-card {
+    display: flex;
+    flex-direction: column;
+    border: 2px solid #e0e0e0;
+    border-radius: var(--radius);
+    padding: 0.7rem;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+    text-align: center;
+}
+.category-card input[type="radio"] {
+    /* masqué visuellement mais accessible */
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.category-card:hover {
+    border-color: var(--accent);
+}
+.category-card:has(input:checked) {
+    border-color: var(--accent);
+    background: #eaf4fb;
+}
+.cat-title {
+    font-weight: 600;
+    font-size: 0.9em;
+}
+.cat-amount {
+    color: var(--text-muted);
+    font-size: 0.8em;
+    margin-top: 4px;
+}
+
+#form-requete textarea,
+#form-requete input[type="number"],
+#form-requete input[type="text"] {
+    width: 100%;
+    padding: 0.7rem;
+    border: 1px solid #E0E0E0;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.95em;
+    outline: none;
+    resize: vertical;
+}
+#form-requete textarea:focus,
+#form-requete input:focus {
+    border-color: var(--accent);
+}
+
+/* Sélecteur de réseau (réutilise .grid-networks) */
+#network-picker button.selected {
+    outline: 3px solid var(--primary);
+    outline-offset: 1px;
+}
+.net-hint {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    margin: 0.5rem 0 0;
+    min-height: 1.2em;
+}
+
+.amount-ref-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+@media (max-width: 480px) {
+    .amount-ref-row { grid-template-columns: 1fr; }
+}
+
+.form-error {
+    color: #c0392b;
+    font-size: 0.88em;
+    min-height: 1.2em;
+    margin-top: 0.5rem;
+}
+
+/* Écran de confirmation + code utilisateur */
+.confirm-icon {
+    font-size: 3rem;
+    text-align: center;
+}
+.user-code-box {
+    text-align: center;
+    background: #f4f6f7;
+    border: 1px dashed var(--accent);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+}
+.user-code-label {
+    display: block;
+    font-size: 0.8em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+.user-code-value {
+    font-size: 2rem;
+    font-weight: bold;
+    letter-spacing: 6px;
+    color: var(--primary);
+    margin-top: 0.4rem;
+    font-family: 'Courier New', monospace;
+}
+
+/* =====================================================================
+   PAGE DE SUIVI DES REQUÊTES (style WhatsApp)
+   ===================================================================== */
+.requests-container {
+    max-width: 760px;
+}
+
+/* Légende */
+.wa-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.2rem;
+    padding: 0.75rem 1rem;
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    margin-bottom: 2rem;
+    font-size: 0.82em;
+    color: var(--text-muted);
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Section par catégorie */
+.wa-section {
+    margin-bottom: 2rem;
+}
+.wa-section-title {
+    font-size: 1.05rem;
+    color: var(--primary);
+    border-bottom: 2px solid #eef2f5;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+.wa-count {
+    color: var(--text-muted);
+    font-size: 0.85em;
+    font-weight: normal;
+}
+
+/* Bulle type WhatsApp */
+.wa-bubble {
+    position: relative;
+    background: #e7ffd4; /* vert clair style bulle reçue WhatsApp */
+    border-radius: 10px 10px 10px 0;
+    padding: 0.8rem 1rem;
+    margin-bottom: 0.9rem;
+    max-width: 90%;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    word-wrap: break-word;
+}
+
+.wa-bubble-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0.5rem;
+}
+.wa-cat-badge {
+    color: #fff;
+    font-size: 0.75em;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 12px;
+}
+.wa-amount {
+    font-weight: bold;
+    color: var(--primary);
+    font-size: 0.9em;
+}
+.wa-network {
+    font-size: 0.75em;
+    color: var(--text-muted);
+    background: rgba(0, 0, 0, 0.05);
+    padding: 2px 7px;
+    border-radius: 10px;
+}
+.wa-message {
+    color: var(--text-main);
+    font-size: 0.95em;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+.wa-ref {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+}
+.wa-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.6rem;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.wa-don .don-badge {
+    font-size: 0.72em;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+.don-ok {
+    background: #d4edda;
+    color: #155724;
+}
+.don-ko {
+    background: #f8d7da;
+    color: #721c24;
+}
+.wa-time {
+    font-size: 0.72em;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Accusés de réception (style WhatsApp) */
+.checks {
+    cursor: pointer;
+    font-size: 1em;
+    user-select: none;
+    transition: transform 0.1s ease;
+}
+.checks:hover {
+    transform: scale(1.15);
+}
+.checks-none {
+    color: #aaa;
+}
+.checks-dev {
+    color: #888; /* gris = fait par le dev */
+}
+.checks-done {
+    color: #34b7f1; /* bleu WhatsApp = confirmé */
+}
+
+@media (max-width: 600px) {
+    .wa-bubble { max-width: 100%; }
+    header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+}

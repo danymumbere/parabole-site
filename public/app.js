@@ -80,28 +80,141 @@ function urlBase64ToUint8Array(base64String) {
     return outputArray;
 }
 
-function preparerDon(reseau, code) {
-    const num = "0906253050";
-    
-    // Essayer de copier le numéro dans le presse-papiers
-    navigator.clipboard.writeText(num).then(() => {
-        alert("Numéro " + num + " copié dans le presse-papiers ! Composez le " + code + " et suivez les étapes.");
-    }).catch(err => {
-        // Fallback si le navigateur bloque l'accès au presse-papiers
-        alert("Composez le " + code + " et envoyez votre don au numéro : " + num);
+// =====================================================================
+// SYSTÈME "DONNER UN COUP DE POUCE" (Modal : instructions + formulaire)
+// =====================================================================
+
+const DON_NUMBER = "0906253050";
+
+// Ouvre le modal
+function openCoupDePouceModal() {
+    const modal = document.getElementById('modal-coup-de-pouce');
+    if (!modal) return;
+    document.getElementById('modal-form-step').classList.remove('hidden');
+    document.getElementById('modal-confirm-step').classList.add('hidden');
+    document.getElementById('form-error').textContent = '';
+    modal.classList.remove('hidden');
+}
+
+// Ferme le modal et réinitialise le formulaire
+function closeCoupDePouceModal() {
+    const modal = document.getElementById('modal-coup-de-pouce');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    const form = document.getElementById('form-requete');
+    if (form) form.reset();
+    document.getElementById('req-network').value = '';
+    document.querySelectorAll('#network-picker button').forEach(b => b.classList.remove('selected'));
+    const hint = document.getElementById('net-hint');
+    if (hint) hint.textContent = '';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const headerBtn = document.getElementById('btn-coup-de-pouce-header');
+    const mainBtn = document.getElementById('btn-coup-de-pouce-main');
+    const closeBtn = document.getElementById('modal-close-btn');
+    const overlay = document.getElementById('modal-coup-de-pouce');
+
+    if (headerBtn) headerBtn.addEventListener('click', openCoupDePouceModal);
+    if (mainBtn) mainBtn.addEventListener('click', openCoupDePouceModal);
+    if (closeBtn) closeBtn.addEventListener('click', closeCoupDePouceModal);
+    // Fermer en cliquant sur l'arrière-plan
+    if (overlay) overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeCoupDePouceModal();
+    });
+    // Fermer avec la touche Échap
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && overlay && !overlay.classList.contains('hidden')) closeCoupDePouceModal();
     });
 
-    // Affichage des instructions dans la petite boîte
-    const instructionsDiv = document.getElementById('instructions-don');
-    const texteInstruction = document.getElementById('texte-instruction');
-    if (instructionsDiv && texteInstruction) {
-        texteInstruction.innerText = `Instructions (${reseau}) : Le numéro ${num} a été copié. Composez le ${code}, choisissez l'option "Envoi d'argent", collez le numéro et validez. Merci pour votre générosité !`;
-        instructionsDiv.classList.remove('hidden');
+    // --- Sélection du réseau dans le formulaire ---
+    const networkPicker = document.getElementById('network-picker');
+    const networkInput = document.getElementById('req-network');
+    const netHint = document.getElementById('net-hint');
+    if (networkPicker) {
+        networkPicker.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const network = btn.dataset.network;
+                const code = btn.dataset.code;
+                networkPicker.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                networkInput.value = network;
+                // Copie du numéro + composition USSD (réutilise l'ancienne logique)
+                navigator.clipboard?.writeText(DON_NUMBER).catch(() => {});
+                netHint.textContent = `Numéro ${DON_NUMBER} copié. Composez ${code}, choisissez "Envoi d'argent", collez le numéro et validez.`;
+                // Redirige vers l'application téléphone
+                window.location.href = "tel:" + code.replace("#", "%23");
+            });
+        });
     }
 
-    // Rediriger vers l'application téléphone
-    window.location.href = "tel:" + code.replace("#", "%23");
-}
+    // --- Soumission du formulaire ---
+    const form = document.getElementById('form-requete');
+    const errorEl = document.getElementById('form-error');
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            errorEl.textContent = '';
+            const submitBtn = document.getElementById('form-submit-btn');
+            const data = {
+                category: form.category.value,
+                message: form.message.value,
+                amount: form.amount.value,
+                network: form.network.value,
+                transactionRef: form.transactionRef.value
+            };
+
+            if (!data.network) {
+                errorEl.textContent = "Veuillez choisir un réseau pour le don.";
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Envoi en cours...";
+
+            try {
+                const res = await fetch('/api/requests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || "Erreur lors de l'envoi.");
+
+                // Sauvegarde du code utilisateur en localStorage (permet de retrouver la requête)
+                try {
+                    const saved = JSON.parse(localStorage.getItem('parabole:userCodes') || '[]');
+                    saved.push({ id: result.id, userCode: result.userCode, category: data.category });
+                    localStorage.setItem('parabole:userCodes', JSON.stringify(saved));
+                } catch (e) { /* localStorage indisponible : on continue */ }
+
+                // Affichage de l'écran de confirmation
+                document.getElementById('user-code-display').textContent = result.userCode;
+                document.getElementById('modal-form-step').classList.add('hidden');
+                document.getElementById('modal-confirm-step').classList.remove('hidden');
+            } catch (err) {
+                errorEl.textContent = err.message;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Envoyer ma requête";
+            }
+        });
+    }
+
+    // --- Copier le code unique ---
+    const copyBtn = document.getElementById('copy-code-btn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+            const code = document.getElementById('user-code-display').textContent;
+            if (code && code !== '------') {
+                navigator.clipboard?.writeText(code).then(() => {
+                    copyBtn.textContent = "✅ Copié !";
+                    setTimeout(() => copyBtn.textContent = "📋 Copier le code", 2000);
+                }).catch(() => {});
+            }
+        });
+    }
+});
 
 // Initialisation
 document.addEventListener('DOMContentLoaded', renderStories);
