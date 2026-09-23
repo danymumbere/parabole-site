@@ -13,7 +13,7 @@ function getDayOfYear() {
 }
 
 async function generateStory() {
-    const themes = ["l'espoir", "le courage", "le pardon", "la patience", "la foi dans l'épreuve", "la joie partagée", "la fidélité"];
+    const themes = ["espoir et Jésus", "courage et Jésus", "pardon et Jésus", "patience, fruit du Saint-Esprit", "foi en Jésus dans l'épreuve", "joie partagée en Jésus", "fidélité à Jésus", "Jésus fils de Dieu et sauveur de l'humanité"];
     
     // Calcul mathématique pour une sélection séquentielle basée sur la date
     const dayOfYear = getDayOfYear();
@@ -27,7 +27,7 @@ async function generateStory() {
     IMPORTANT: Choisis un verset qui parle de : ${selectedTheme}.
     Analyse l'idée et le message spirituel qui en découlent.
     Ensuite, agis comme un directeur créatif et rédige un prompt détaillé destiné à un écrivain. Ce prompt devra exiger de l'écrivain qu'il rédige une histoire moderne, profonde et subtile (une parabole moderne) qui transmet ce message implicitement, comme Jésus expliquait au moyen de paraboles. 
-    Décris dans ce prompt l'ambiance, les thèmes à aborder, le développement émotionnel, et précise que le personnage principal DOIT avoir un nom original.
+    Décris dans ce prompt l'ambiance, les thèmes à aborder, le développement émotionnel, et précise que le personnage principal DOIT avoir un nom original et se trouver dans un décor de rêve qui est familier au lecteur cible.
     IMPORTANT : Ne rédige pas l'histoire toi-même. Rédige UNIQUEMENT le prompt détaillé pour l'écrivain.`;
 
     console.log(`Étape 1 : Création du prompt directeur (Thème du jour: ${selectedTheme})...`);
