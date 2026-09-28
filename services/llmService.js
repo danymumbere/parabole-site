@@ -24,9 +24,9 @@ async function generateStory() {
     // ÉTAPE 1 : PROMPT DIRECTEUR (Réflexion)
     // ==========================================
     const step1Prompt = `Trouve un verset ou une séquence biblique intéressante ou inspirante. 
-    IMPORTANT: Choisis un verset qui parle de : ${selectedTheme}.
+    IMPORTANT: Avec comme thème : ${selectedTheme}, choisis d'abord un verset qui correspond.
     Analyse l'idée et le message spirituel qui en découlent.
-    Ensuite, agis comme un directeur créatif et rédige un prompt détaillé destiné à un écrivain. Ce prompt devra exiger de l'écrivain qu'il rédige une histoire moderne, profonde et subtile (une parabole moderne) qui transmet ce message implicitement, comme Jésus expliquait au moyen de paraboles. 
+    Ensuite, agis comme un directeur créatif et rédige un prompt détaillé destiné à un écrivain. Ce prompt devra exiger de l'écrivain qu'il rédige une histoire moderne, profonde et subtile (une parabole moderne) qui transmet ce message implicitement (le thème de l'histoire est: ${selectedTheme}), comme Jésus expliquait au moyen de paraboles. 
     Décris dans ce prompt l'ambiance, les thèmes à aborder, le développement émotionnel, et précise que le personnage principal DOIT avoir un nom original et se trouver dans un décor de rêve qui est familier au lecteur cible.
     IMPORTANT : Ne rédige pas l'histoire toi-même. Rédige UNIQUEMENT le prompt détaillé pour l'écrivain.`;
 
