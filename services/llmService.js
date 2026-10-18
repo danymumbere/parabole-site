@@ -69,66 +69,165 @@ async function generateStory() {
 }
 
 // ==========================================
+// SÉLECTION DYNAMIQUE DES MODÈLES GEMINI
+// ==========================================
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+const MAX_MODELS = 5;          // nombre max de modèles essayés par clé
+const MAX_RETRIES = 3;         // essais par modèle
+const MODELS_CACHE_TTL = 60 * 60 * 1000; // 1 h
+
+// Dernier recours si l'API de liste des modèles est indisponible
+const LAST_RESORT_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+
+// Cache par clé : { models, expires }
+const modelsCache = new Map();
+
+// Extrait le numéro de version d'un nom de modèle (ex: "gemini-2.5-flash" -> 2.5)
+const modelVersion = (name) => parseFloat(name.match(/gemini-(\d+(?:\.\d+)?)/)?.[1] || 0);
+
+async function pickModels(key) {
+    const cached = modelsCache.get(key);
+    if (cached && cached.expires > Date.now()) return cached.models;
+
+    const found = [];
+    try {
+        const response = await axios.get(`${GEMINI_BASE_URL}/models`, {
+            params: { pageSize: 200, key }
+        });
+        for (const m of response.data.models || []) {
+            const name = m.name.replace('models/', '');
+            if (!m.supportedGenerationMethods?.includes('generateContent')) continue;
+            // Uniquement les modèles "flash" de texte, hors variantes spécialisées/expérimentales
+            if (!/flash/.test(name) || /image|tts|live|audio|embed|robotics|computer|exp|latest/.test(name)) continue;
+            found.push(name);
+        }
+    } catch (error) {
+        console.warn(`⚠️ Liste des modèles Gemini indisponible (${error.response?.status || error.message}).`);
+    }
+
+    // Plus récent d'abord ; les versions "lite" passent après les modèles normaux de même version
+    found.sort((x, y) =>
+        modelVersion(y) - modelVersion(x) ||
+        /lite/.test(x) - /lite/.test(y) ||
+        x.length - y.length
+    );
+
+    // Un modèle imposé via GEMINI_MODEL est toujours essayé en premier
+    const models = [process.env.GEMINI_MODEL, ...found]
+        .filter(Boolean)
+        .filter((m, i, arr) => arr.indexOf(m) === i)
+        .slice(0, MAX_MODELS);
+
+    // Si la liste est vide (API injoignable), on se rabat sur les modèles de dernier recours
+    const result = models.length ? models : LAST_RESORT_MODELS;
+
+    // On ne met en cache que les listes obtenues réellement depuis l'API
+    if (found.length) {
+        modelsCache.set(key, { models: result, expires: Date.now() + MODELS_CACHE_TTL });
+    }
+
+    console.log('Modèles Gemini à essayer :', result.join(', '));
+    return result;
+}
+
+// ==========================================
 // MOTEUR D'EXÉCUTION ET DE GESTION D'ERREURS
 // ==========================================
 async function executeGeminiCall(promptText, expectJson = true) {
     const primaryKey = process.env.GEMINI_API_KEY;
-    const backupKey = process.env.GEMINI_API_KEY_BACKUP || primaryKey; 
-    const MAX_RETRIES = 3; 
+    const backupKey = process.env.GEMINI_API_KEY_BACKUP;
 
-    // 1. TENTATIVES AVEC LA CLÉ PRINCIPALE (RETRY + BACKOFF)
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-            return await callGeminiAPI(primaryKey, promptText, expectJson);
-        } catch (error) {
-            const status = error.response ? error.response.status : null; 
-            if ((status === 503 || status === 429) && attempt < MAX_RETRIES) { 
-                const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000; 
-                console.warn(`⚠️ Gemini surchargé (Erreur ${status}). Nouvelle tentative dans ${Math.round(delay)}ms... (Essai ${attempt}/${MAX_RETRIES})`); 
-                await sleep(delay); 
-            } else {
-                console.warn(`❌ Échec Gemini Clé Principale (Erreur: ${status || error.message}).`); 
-                break; 
+    // Clés à essayer dans l'ordre (la clé de secours uniquement si elle est différente)
+    const keys = [
+        { label: 'principale', value: primaryKey },
+        ...(backupKey && backupKey !== primaryKey ? [{ label: 'de secours', value: backupKey }] : [])
+    ].filter(k => k.value);
+
+    for (const { label, value: key } of keys) {
+        console.log(`🔑 Utilisation de la clé Gemini ${label}...`);
+        const result = await tryAllModels(key, promptText, expectJson);
+        if (result !== undefined) return result;
+        console.warn(`❌ Échec de la clé Gemini ${label}.`);
+    }
+
+    throw new Error("Échec total de l'appel Gemini (Toutes les clés et tous les modèles ont échoué).");
+}
+
+// Essaie chaque modèle (avec retries) pour une clé donnée. Renvoie undefined en cas d'échec total.
+async function tryAllModels(key, promptText, expectJson) {
+    const models = await pickModels(key);
+
+    for (const model of models) {
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                return await callGeminiAPI(key, model, promptText, expectJson);
+            } catch (error) {
+                const status = error.response?.status ?? null;
+                const reason = status || error.message;
+
+                // Clé refusée : inutile d'essayer d'autres modèles avec cette clé
+                if (status === 401 || status === 403) {
+                    console.warn(`🚫 [${model}] Clé refusée (HTTP ${status}).`);
+                    return undefined;
+                }
+
+                // Modèle indisponible ou requête invalide : on passe au modèle suivant
+                if (status === 400 || status === 404) {
+                    console.warn(`⚠️ [${model}] Indisponible (HTTP ${status}). Passage au modèle suivant.`);
+                    break;
+                }
+
+                // Erreurs transitoires (429, 5xx, réseau, JSON invalide) : retry avec backoff
+                if (attempt < MAX_RETRIES) {
+                    const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+                    console.warn(`⚠️ [${model}] Erreur (${reason}). Nouvelle tentative dans ${Math.round(delay)}ms... (Essai ${attempt}/${MAX_RETRIES})`);
+                    await sleep(delay);
+                } else {
+                    console.warn(`⚠️ [${model}] Échec après ${MAX_RETRIES} essais (${reason}). Passage au modèle suivant.`);
+                }
             }
         }
     }
 
-    // 2. PLAN B : TENTATIVE AVEC CLÉ DE SECOURS
-    if (process.env.GEMINI_API_KEY_BACKUP) { 
-        console.log("🔄 Basculement sur la clé Gemini de secours (Plan B)..."); 
-        try {
-            return await callGeminiAPI(backupKey, promptText, expectJson);
-        } catch (backupError) {
-            console.error("❌ Échec également sur la clé Gemini de secours:", backupError.message); 
-        }
-    }
-
-    throw new Error("Échec total de l'appel Gemini (Toutes les tentatives ont échoué)."); 
+    return undefined;
 }
 
 // ==========================================
 // APPEL BRUT À L'API GEMINI
 // ==========================================
-async function callGeminiAPI(key, promptText, expectJson) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${key}`; 
-    
-    const response = await axios.post(url, { 
-        contents: [{ parts: [{ text: promptText }] }], 
-        generationConfig: {
-            temperature: 1.0, 
-            topP: 0.95,       
-            topK: 40          
-        }
+async function callGeminiAPI(key, model, promptText, expectJson) {
+    const url = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${key}`;
+
+    const generationConfig = {
+        temperature: 1.0,
+        topP: 0.95,
+        topK: 40
+    };
+    // Force une sortie JSON valide côté Gemini quand on en attend une
+    if (expectJson) generationConfig.responseMimeType = 'application/json';
+
+    const response = await axios.post(url, {
+        contents: [{ parts: [{ text: promptText }] }],
+        generationConfig
     });
 
-    const rawText = response.data.candidates[0].content.parts[0].text; 
-    
+    // On ignore les "thought parts" des modèles à raisonnement
+    const rawText = response.data.candidates?.[0]?.content?.parts
+        ?.filter(p => !p.thought)
+        .map(p => p.text)
+        .join('');
+
+    if (!rawText) {
+        const reason = response.data.promptFeedback?.blockReason || response.data.candidates?.[0]?.finishReason || 'réponse vide';
+        throw new Error(`Réponse Gemini inexploitable (${reason}).`);
+    }
+
     // Si on s'attend à du JSON, on nettoie et on parse. Sinon, on renvoie le texte brut.
     if (expectJson) {
-        const jsonStr = rawText.replace(/```json/g, '').replace(/```/g, '').trim(); 
-        return JSON.parse(jsonStr); 
+        const jsonStr = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(jsonStr); // une SyntaxError déclenche un nouvel essai
     }
-    
+
     return rawText.trim();
 }
 
