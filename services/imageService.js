@@ -3,247 +3,176 @@ const path = require('path');
 const os = require('os');
 const axios = require('axios');
 
-const POLLINATIONS_BASE_URL = 'https://gen.pollinations.ai';
+// ==========================================
+// CONFIGURATION (variables d'environnement)
+// ==========================================
+// CLOUDFLARE_ACCOUNT_ID  : ID du compte Cloudflare
+// CLOUDFLARE_API_TOKEN   : jeton API avec la permission Workers AI
+// CLOUDFLARE_IMAGE_MODELS: (optionnel) modèles à essayer dans l'ordre, séparés par des virgules
 
-const MAX_MODELS = 5;                       // nombre max de modèles essayés par génération
-const MODELS_CACHE_TTL = 60 * 60 * 1000;    // 1 h
-
-// Dernier recours UNIQUEMENT si le catalogue /image/models est injoignable
-const LAST_RESORT_MODELS = [
-    'black-forest-labs/flux.1-schnell',
-    'tongyi-mai/z-image-turbo',
-    'flux'
+// Modèles essayés dans l'ordre. Le premier est le plus qualitatif ; le second respecte mieux le format 16:9.
+const DEFAULT_IMAGE_MODELS = [
+    '@cf/black-forest-labs/flux-1-schnell',
+    '@cf/bytedance/stable-diffusion-xl-lightning'
 ];
 
-// Classement "par performance" (heuristique, le catalogue ne fournit pas de score de qualité).
-// Plus un motif est haut dans la liste, plus le modèle est prioritaire.
-const QUALITY_PATTERNS = [
-    /flux-3-image(?!-klein)/, /flux\.2-(max|pro|flex)/, /gpt-image-2/, /seedream-5\.0-pro/,
-    /ideogram-v4/, /nano-banana|gemini-3.*image/, /qwen-image-3/, /seedream/,
-    /flux\.1\.1-pro/, /gpt-image/, /qwen-image/, /mai-image/, /wan-2\.7-image/,
-    /flux\.2/, /grok-imagine-image/, /krea/, /z-image/, /flux\.1/, /dreamshaper/
-];
-// Variantes rapides/allégées : légèrement moins bien classées que leur famille
-const LIGHT_VARIANT = /turbo|lite|mini|klein|schnell|flash|lcm|fast/;
+const WIDTH = 1024;
+const HEIGHT = 576; // 16:9
 
-// Cache du catalogue : { models, expires }
-let catalogCache = null;
+function getModels() {
+    const fromEnv = (process.env.CLOUDFLARE_IMAGE_MODELS || '')
+        .split(',')
+        .map(m => m.trim())
+        .filter(Boolean);
+    return fromEnv.length ? fromEnv : DEFAULT_IMAGE_MODELS;
+}
 
 // Fonction utilitaire de temporisation
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ==========================================
-// DÉCOUVERTE DES MODÈLES (catalogue /image/models)
+// UTILITAIRES
 // ==========================================
 
-// Récupère récursivement toutes les valeurs numériques d'un objet "pricing"
-function collectNumbers(value, out = []) {
-    if (typeof value === 'number' && Number.isFinite(value)) out.push(value);
-    else if (Array.isArray(value)) value.forEach(v => collectNumbers(v, out));
-    else if (value && typeof value === 'object') Object.values(value).forEach(v => collectNumbers(v, out));
-    return out;
-}
-
-// Gratuit = pas "paid_only" + tarification connue dont toutes les valeurs sont à 0.
-// (Tarification absente/illisible = inconnu = considéré comme NON gratuit, par prudence.)
-function isFreeModel(model) {
-    if (model.paid_only === true) return false;
-    const prices = collectNumbers(model.pricing);
-    return prices.length > 0 && prices.every(p => p === 0);
-}
-
-// Coût approximatif (somme des tarifs) pour trier les modèles payants du moins cher au plus cher
-function approxCost(model) {
-    return collectNumbers(model.pricing).reduce((a, b) => a + b, 0);
-}
-
-// Garde uniquement les modèles texte -> image raster (pas vidéo, pas édition, pas vectoriel)
-function isUsableImageModel(model) {
-    const id = String(model.name || model.id || '');
-    if (!id) return false;
-    const outputs = model.output_modalities || ['image'];
-    const inputs = model.input_modalities || ['text'];
-    if (!outputs.includes('image') || outputs.includes('video')) return false;
-    if (!inputs.includes('text')) return false;
-    if (/edit|kontext|vector|video/i.test(id)) return false;
-    return true;
-}
-
-function qualityScore(id) {
-    const idx = QUALITY_PATTERNS.findIndex(re => re.test(id));
-    const base = idx === -1 ? QUALITY_PATTERNS.length : idx;
-    return base * 10 + (LIGHT_VARIANT.test(id) ? 5 : 0); // plus petit = meilleur
-}
-
-async function fetchImageCatalog(headers) {
-    if (catalogCache && catalogCache.expires > Date.now()) return catalogCache.models;
-
-    const response = await axios.get(`${POLLINATIONS_BASE_URL}/image/models`, { headers, timeout: 10000 });
-    const raw = response.data;
-    const list = Array.isArray(raw) ? raw : (raw?.data || raw?.models || []);
-
-    const models = list.filter(isUsableImageModel);
-    if (!models.length) throw new Error('Catalogue vide ou format inattendu');
-
-    catalogCache = { models, expires: Date.now() + MODELS_CACHE_TTL };
-    return models;
-}
-
-// Construit la liste ordonnée des modèles à essayer
-async function pickModels(headers) {
-    const forced = [process.env.POLLINATIONS_IMAGE_MODEL].filter(Boolean);
-    let ranked = [];
-
-    try {
-        const catalog = await fetchImageCatalog(headers);
-        const free = catalog.filter(isFreeModel).sort((a, b) =>
-            qualityScore(a.name || a.id) - qualityScore(b.name || b.id) || String(a.name).localeCompare(String(b.name))
-        );
-
-        if (free.length) {
-            ranked = free.map(m => m.name || m.id);
-            console.log(`🆓 ${free.length} modèle(s) gratuit(s) détecté(s) : ${ranked.slice(0, MAX_MODELS).join(', ')}`);
-        } else if (process.env.POLLINATIONS_ALLOW_PAID === 'true') {
-            // Option : si aucun modèle gratuit, on tente les moins chers (consomme du Pollen)
-            ranked = [...catalog].sort((a, b) => approxCost(a) - approxCost(b) || qualityScore(a.name) - qualityScore(b.name)).map(m => m.name || m.id);
-            console.warn(`⚠️ Aucun modèle gratuit : repli sur les moins chers (POLLINATIONS_ALLOW_PAID=true) : ${ranked.slice(0, MAX_MODELS).join(', ')}`);
-        } else {
-            const cheapest = [...catalog].sort((a, b) => approxCost(a) - approxCost(b)).slice(0, 3).map(m => m.name || m.id);
-            console.warn(`⚠️ Aucun modèle gratuit dans le catalogue Pollinations. Les moins chers : ${cheapest.join(', ')}. Mettez POLLINATIONS_ALLOW_PAID=true pour les autoriser.`);
-        }
-    } catch (error) {
-        console.warn(`⚠️ Catalogue /image/models indisponible (${error.response?.status || error.message}). Utilisation des modèles de dernier recours.`);
-        ranked = LAST_RESORT_MODELS;
-    }
-
-    return [...forced, ...ranked].filter((m, i, arr) => arr.indexOf(m) === i).slice(0, MAX_MODELS);
-}
-
-// ==========================================
-// REQUÊTES ET UTILITAIRES
-// ==========================================
-
-// Avec responseType 'arraybuffer', le corps d'erreur est un Buffer : on le décode pour le log
+// Le corps d'erreur peut arriver sous forme de Buffer (responseType 'arraybuffer') : on le décode pour le log
 function extractErrorMessage(error) {
     const data = error.response?.data;
     if (!data) return error.message;
     try {
         const text = Buffer.isBuffer(data) ? data.toString('utf8') : (typeof data === 'string' ? data : JSON.stringify(data));
         const parsed = JSON.parse(text);
-        return parsed?.error?.message || text.slice(0, 300);
+        const first = parsed?.errors?.[0];
+        return first ? `${first.code ? first.code + ': ' : ''}${first.message}` : text.slice(0, 300);
     } catch {
         return (Buffer.isBuffer(data) ? data.toString('utf8') : String(data)).slice(0, 300);
     }
 }
 
-// Helper de requête HTTP avec gestion du Rate Limit (429) et retry exponentiel
-// NB : un 402 (solde Pollen insuffisant) n'est volontairement PAS réessayé.
-async function fetchWithRetry(url, options = {}, retries = 3, delay = 2000) {
-    for (let i = 0; i < retries; i++) {
-        try {
-            return await axios.get(url, options);
-        } catch (error) {
-            const status = error.response?.status;
-            const isRateLimit = status === 429;
-            const isServerError = status >= 500;
-            const isNetworkError = !error.response;
-
-            if ((isRateLimit || isServerError || isNetworkError) && i < retries - 1) {
-                console.warn(`⚠️ Erreur ${status || error.message} (Rate Limit / Serveur / Réseau). Nouvelle tentative (${i + 1}/${retries}) dans ${delay / 1000}s...`);
-                await sleep(delay);
-                delay *= 2;
-            } else {
-                throw error;
-            }
-        }
-    }
-}
-
-// Diagnostic : solde Pollen visible par la clé (utile pour comprendre un 402)
-async function logPollenBalance(headers) {
-    try {
-        const res = await axios.get(`${POLLINATIONS_BASE_URL}/account/balance`, { headers, timeout: 8000 });
-        console.warn(`ℹ️ Solde Pollen visible par la clé : ${JSON.stringify(res.data)}`);
-    } catch (e) {
-        console.warn(`ℹ️ Solde Pollen indisponible (${e.response?.status || e.message}).`);
-    }
-}
-
-// Extension réelle selon le type de contenu renvoyé (JPEG, PNG ou SVG selon le modèle)
-function extensionFromContentType(contentType = '') {
-    if (contentType.includes('jpeg') || contentType.includes('jpg')) return 'jpg';
-    if (contentType.includes('svg')) return 'svg';
-    if (contentType.includes('webp')) return 'webp';
+// Détecte le format réel de l'image grâce aux premiers octets (JPEG, PNG ou WebP)
+function detectExtension(buffer) {
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8) return 'jpg';
+    if (buffer[0] === 0x89 && buffer[1] === 0x50) return 'png';
+    if (buffer.slice(0, 4).toString() === 'RIFF') return 'webp';
     return 'png';
+}
+
+// Selon le modèle, Cloudflare renvoie soit du JSON {result:{image:"<base64>"}} (FLUX), soit l'image brute (SDXL)
+function extractImageBuffer(response) {
+    const contentType = String(response.headers?.['content-type'] || '');
+    const raw = Buffer.from(response.data);
+
+    if (contentType.includes('application/json')) {
+        const json = JSON.parse(raw.toString('utf8'));
+        if (json.success === false) {
+            throw Object.assign(new Error(json.errors?.[0]?.message || 'Réponse Cloudflare en échec'), { cfJson: json });
+        }
+        const b64 = json?.result?.image;
+        if (!b64) throw new Error('Réponse Cloudflare sans image');
+        return Buffer.from(b64, 'base64');
+    }
+    return raw; // image binaire directe
+}
+
+// Appel brut à un modèle Cloudflare Workers AI
+async function callCloudflare(model, prompt, withDimensions) {
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const token = process.env.CLOUDFLARE_API_TOKEN;
+    const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
+
+    const body = { prompt };
+    if (withDimensions) {
+        body.width = WIDTH;
+        body.height = HEIGHT;
+    }
+
+    const response = await axios.post(url, body, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        responseType: 'arraybuffer',
+        timeout: 90000
+    });
+
+    return extractImageBuffer(response);
 }
 
 // ==========================================
 // GÉNÉRATION
 // ==========================================
 async function generateImage(prompt, referenceImageUrl = null) {
+    if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_API_TOKEN) {
+        throw new Error("Échec de la génération d'image : CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_API_TOKEN doivent être configurés.");
+    }
+
     // Renforcement strict du style 2D pour empêcher le rendu 3D
     const styleModifier = "strict 2D vector art, completely flat illustration, minimalist graphic design, solid colors, no shading, zero 3D rendering, no gradients, 16:9 aspect ratio";
-    const finalPrompt = `${prompt}, ${styleModifier}`;
+    // Limite de 2048 caractères pour le prompt côté Cloudflare
+    const finalPrompt = `${prompt}, ${styleModifier}`.slice(0, 2048);
 
     if (referenceImageUrl) {
-        console.log("Note : L'image de référence est ignorée par Pollinations pour éviter la génération de texte parasite.");
+        console.log("Note : L'image de référence est ignorée pour éviter la génération de texte parasite.");
     }
 
-    const encodedPrompt = encodeURIComponent(finalPrompt);
-
-    const headers = {};
-    if (process.env.POLLINATIONS_API_KEY) {
-        headers['Authorization'] = `Bearer ${process.env.POLLINATIONS_API_KEY}`;
-    }
-
-    const models = await pickModels(headers);
-    if (!models.length) {
-        throw new Error("Échec de la génération d'image : aucun modèle Pollinations gratuit disponible.");
-    }
-    console.log(`Génération d'image via Pollinations.ai (modèles : ${models.join(', ')})...`);
-
+    const models = getModels();
+    const MAX_RETRIES = 3;
     let lastError = null;
-    let paymentRequired = false;
+
+    console.log(`Génération d'image via Cloudflare Workers AI (modèles : ${models.join(', ')})...`);
 
     for (const model of models) {
-        try {
-            const seed = Math.floor(Math.random() * 10000);
-            const url = `${POLLINATIONS_BASE_URL}/image/${encodedPrompt}?model=${encodeURIComponent(model)}&width=1024&height=576&nologo=true&seed=${seed}`;
+        let withDimensions = true;
 
-            console.log(`→ Essai avec le modèle ${model}...`);
-            const response = await fetchWithRetry(url, { responseType: 'arraybuffer', headers });
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                console.log(`→ Essai avec ${model} (essai ${attempt}/${MAX_RETRIES})...`);
+                const buffer = await callCloudflare(model, finalPrompt, withDimensions);
 
-            console.log(`✅ Image générée avec succès via Pollinations.ai (${model}) !`);
-            return await saveImageFile(response.data, extensionFromContentType(response.headers?.['content-type']));
+                console.log(`✅ Image générée avec succès via ${model} !`);
+                return await saveImageFile(buffer, detectExtension(buffer));
 
-        } catch (error) {
-            lastError = error;
-            const status = error.response?.status;
-            const detail = extractErrorMessage(error);
+            } catch (error) {
+                lastError = error;
+                const status = error.response?.status;
+                const detail = extractErrorMessage(error);
 
-            if (status === 401 || status === 403) {
-                console.error(`❌ Pollinations : clé API refusée (HTTP ${status}) : ${detail}`);
-                throw new Error(`Échec de la génération d'image : clé Pollinations invalide ou sans permission (HTTP ${status}).`);
+                // Jeton ou compte invalide : inutile de continuer
+                if (status === 401 || status === 403) {
+                    console.error(`❌ Cloudflare : accès refusé (HTTP ${status}) : ${detail}`);
+                    throw new Error(`Échec de la génération d'image : jeton ou identifiant de compte Cloudflare invalide (HTTP ${status}).`);
+                }
+
+                // Quota gratuit quotidien épuisé : inutile de réessayer avant la réinitialisation (00:00 UTC)
+                if (/neuron|daily|allocation|quota/i.test(detail)) {
+                    console.error(`❌ Cloudflare : quota gratuit quotidien probablement épuisé : ${detail}`);
+                    throw new Error("Échec de la génération d'image : quota gratuit quotidien Cloudflare épuisé (réinitialisation à 00:00 UTC).");
+                }
+
+                // Paramètres width/height refusés par ce modèle : on réessaie sans
+                if (status === 400 && withDimensions) {
+                    console.warn(`⚠️ [${model}] Requête refusée avec width/height (${detail}). Nouvel essai sans dimensions.`);
+                    withDimensions = false;
+                    attempt--; // cet essai ne compte pas
+                    continue;
+                }
+
+                // Modèle inexistant ou non autorisé : modèle suivant
+                if (status === 400 || status === 404) {
+                    console.warn(`⚠️ [${model}] Indisponible (HTTP ${status}) : ${detail}. Passage au modèle suivant.`);
+                    break;
+                }
+
+                // Erreurs transitoires (429, 5xx, réseau, réponse invalide) : retry avec backoff
+                if (attempt < MAX_RETRIES) {
+                    const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+                    console.warn(`⚠️ [${model}] Erreur (${status || detail}). Nouvelle tentative dans ${Math.round(delay)}ms...`);
+                    await sleep(delay);
+                } else {
+                    console.warn(`⚠️ [${model}] Échec après ${MAX_RETRIES} essais (${status || detail}). Passage au modèle suivant.`);
+                }
             }
-
-            if (status === 402) {
-                paymentRequired = true;
-                console.warn(`⚠️ [${model}] HTTP 402 (solde Pollen insuffisant) : ${detail}. Essai du modèle suivant...`);
-                continue;
-            }
-
-            console.warn(`⚠️ [${model}] Échec (HTTP ${status || error.message}) : ${detail}. Essai du modèle suivant...`);
         }
     }
 
-    if (paymentRequired) {
-        catalogCache = null; // force un rafraîchissement du catalogue au prochain appel
-        await logPollenBalance(headers);
-        throw new Error("Échec de la génération d'image : solde Pollen insuffisant (HTTP 402). Vérifiez le solde et le budget de la clé sur enter.pollinations.ai.");
-    }
-
-    console.error("❌ Erreur Pollinations:", lastError?.message);
-    throw new Error("Échec de la génération d'image via Pollinations.ai.");
+    console.error("❌ Erreur Cloudflare:", lastError?.message);
+    throw new Error("Échec de la génération d'image via Cloudflare Workers AI.");
 }
 
 // Fonction utilitaire pour sauvegarder le fichier
