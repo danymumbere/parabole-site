@@ -147,6 +147,20 @@
         </div>
     </div>
 
+    <!-- Modal Lecteur Vidéo -->
+    <div class="modal-overlay hidden" id="modal-video">
+        <div class="modal-box" style="max-width: 800px; text-align: center;">
+            <button class="modal-close" id="modal-video-close" aria-label="Fermer">&times;</button>
+            <h3 id="video-modal-title" style="color: var(--primary); margin-bottom: 1rem;">Visionnage de la Parabole</h3>
+            <div style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                <p id="video-loading-text" style="color: white; padding: 1rem;">Préparation de la vidéo...</p>
+                <video id="story-video-player" controls playsinline style="width: 100%; height: 100%; display: none;"></video>
+            </div>
+            <!-- Texte de la scène en cours, synchronisé avec la vidéo -->
+            <p id="video-caption" style="margin-top: 1rem; min-height: 3em; font-size: 1rem; line-height: 1.5; color: var(--text-muted);"></p>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>

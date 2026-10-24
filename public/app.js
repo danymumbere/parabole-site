@@ -13,7 +13,10 @@ async function renderStories() {
                 <div class="card-content">
                     <h3 class="card-title">${story.title}</h3>
                     <p style="font-size: 0.8rem; color: var(--accent); margin-bottom: 1rem;">${story.verse}</p>
-                    <a href="${story.pdfUrl}" target="_blank" class="btn btn-primary" style="display: block; text-align: center;">Lire le PDF</a>
+                    <div style="display: flex; gap: 10px;">
+                        <a href="${story.pdfUrl}" target="_blank" class="btn btn-primary" style="flex: 1; text-align: center;">Lire le PDF</a>
+                        ${story.hasVideo ? `<button type="button" class="btn btn-outline btn-watch-video" data-id="${story._id}" style="flex: 1;">🎬 Lire la vidéo</button>` : ''}
+                    </div>
                 </div>
             </div>
         `).join('');
@@ -225,3 +228,111 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Initialisation
 document.addEventListener('DOMContentLoaded', renderStories);
+
+// =====================================================================
+// LECTEUR VIDÉO À LA DEMANDE
+// Le serveur compile la vidéo avec FFmpeg au premier clic ; on interroge
+// l'API toutes les 3 s jusqu'à ce qu'elle soit prête.
+// =====================================================================
+
+let videoSession = 0; // permet d'ignorer les réponses d'une session fermée
+
+function closeVideoModal() {
+    videoSession++;
+    const modal = document.getElementById('modal-video');
+    const player = document.getElementById('story-video-player');
+    if (!modal) return;
+    player.pause();
+    player.ontimeupdate = null;
+    player.removeAttribute('src');
+    player.load();
+    modal.classList.add('hidden');
+}
+
+function openVideoModal(storyId, title) {
+    const modal = document.getElementById('modal-video');
+    const player = document.getElementById('story-video-player');
+    const loading = document.getElementById('video-loading-text');
+    const caption = document.getElementById('video-caption');
+    if (!modal) return;
+
+    const session = ++videoSession;
+    document.getElementById('video-modal-title').textContent = title || 'Visionnage de la Parabole';
+    player.pause();
+    player.ontimeupdate = null;
+    player.removeAttribute('src');
+    player.style.display = 'none';
+    caption.textContent = '';
+    loading.style.display = 'block';
+    loading.textContent = "Préparation de la vidéo en cours (cela peut prendre une à deux minutes la première fois)...";
+    modal.classList.remove('hidden');
+
+    pollVideo(storyId, session, 0);
+}
+
+async function pollVideo(storyId, session, attempt) {
+    const player = document.getElementById('story-video-player');
+    const loading = document.getElementById('video-loading-text');
+    const caption = document.getElementById('video-caption');
+
+    try {
+        const res = await fetch(`/api/stories/${storyId}/video`);
+        const data = await res.json();
+        if (session !== videoSession) return; // modale fermée entre-temps
+
+        if (res.ok && data.status === 'ready') {
+            // Sous-titres synchronisés : on retrouve la scène en cours grâce aux durées
+            const starts = [];
+            let total = 0;
+            data.durations.forEach(d => { starts.push(total); total += d; });
+            let lastIndex = -1;
+            player.ontimeupdate = () => {
+                let idx = 0;
+                for (let i = 0; i < starts.length; i++) if (player.currentTime >= starts[i]) idx = i;
+                if (idx !== lastIndex) {
+                    lastIndex = idx;
+                    caption.textContent = data.captions[idx] || '';
+                }
+            };
+            caption.textContent = data.captions[0] || '';
+            player.src = data.videoUrl;
+            loading.style.display = 'none';
+            player.style.display = 'block';
+            player.play().catch(() => {}); // la lecture auto peut être refusée : le bouton ▶ reste disponible
+            return;
+        }
+
+        if (res.status === 202 || data.status === 'processing') {
+            if (attempt > 150) { // ~7 min
+                loading.textContent = "La compilation prend trop de temps. Réessayez dans un moment.";
+                return;
+            }
+            setTimeout(() => pollVideo(storyId, session, attempt + 1), 3000);
+            return;
+        }
+
+        loading.textContent = data.error || "Erreur lors de la génération de la vidéo.";
+    } catch (err) {
+        if (session !== videoSession) return;
+        loading.textContent = "Erreur réseau lors de la génération.";
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Délégation : les cartes sont injectées dynamiquement
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-watch-video');
+        if (!btn) return;
+        const card = btn.closest('.card');
+        const title = card ? card.querySelector('.card-title')?.textContent : '';
+        openVideoModal(btn.dataset.id, title);
+    });
+
+    const closeBtn = document.getElementById('modal-video-close');
+    const overlay = document.getElementById('modal-video');
+    if (closeBtn) closeBtn.addEventListener('click', closeVideoModal);
+    if (overlay) overlay.addEventListener('click', (e) => { if (e.target === overlay) closeVideoModal(); });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && overlay && !overlay.classList.contains('hidden')) closeVideoModal();
+    });
+});

@@ -1,3 +1,4 @@
 node_modules/
 .env
 public/pdfs/parabole-*.pdf
+public/videos/

@@ -12,6 +12,10 @@ const Request = require('./models/Request');
 const { CATEGORY_MIN_AMOUNT } = require('./models/Request');
 const webpush = require('web-push');
 const { uploadToCloud, uploadImageFromUrl } = require('./services/cloudService');
+const mongoose = require('mongoose');
+const { generateStoryVideo, computeDurations, pruneVideos } = require('./services/videoService');
+const { startKeepAlive } = require('./services/keepAlive');
+const { narrateAndUpload } = require('./services/ttsService');
 
 const app = express();
 app.use(express.json());
@@ -20,6 +24,9 @@ const path = require('path');
 
 // Exposer le dossier public (HTML, CSS, JS et les PDFs générés)
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Route légère pour le keep-alive et le "Health Check Path" de Render (pas de base de données, réponse minimale)
+app.get('/healthz', (req, res) => res.status(200).send('ok'));
 
 // Configuration Web Push
 webpush.setVapidDetails(
@@ -194,11 +201,81 @@ app.post('/api/requests/:id/user-check', async (req, res) => {
 app.get('/api/stories', async (req, res) => {
     try {
         // Récupère toutes les histoires, triées de la plus récente à la plus ancienne
-        const stories = await Story.find().sort({ createdAt: -1 });
-        res.status(200).json(stories);
+        // .lean() + on n'envoie pas toutes les scènes à la page d'accueil, juste un indicateur "hasVideo"
+        const stories = await Story.find().sort({ createdAt: -1 }).lean();
+        res.status(200).json(stories.map(({ scenes, ...story }) => ({
+            ...story,
+            hasVideo: Array.isArray(scenes) && scenes.length > 0
+        })));
     } catch (error) {
         console.error("Erreur lors de la récupération :", error);
         res.status(500).json({ message: "Erreur serveur" });
+    }
+});
+
+// --- VIDÉO À LA DEMANDE ---
+// Les vidéos sont compilées avec FFmpeg au premier clic puis gardées en cache sur le disque
+// (éphémère sur Render : elles seront simplement recompilées après un redéploiement/redémarrage).
+const VIDEO_DIR = path.join(__dirname, 'public', 'videos');
+const MAX_CACHED_VIDEOS = parseInt(process.env.MAX_CACHED_VIDEOS || '10', 10);
+const videoJobs = new Map();      // storyId -> { status: 'processing' | 'error', error? }
+let videoQueue = Promise.resolve(); // une seule compilation à la fois (protège la RAM/CPU de Render)
+
+app.get('/api/stories/:id/video', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ error: "Identifiant invalide." });
+        }
+
+        const story = await Story.findById(id).lean();
+        if (!story || !story.scenes || story.scenes.length === 0) {
+            return res.status(404).json({ error: "Aucune vidéo disponible pour cette histoire." });
+        }
+
+        const fileName = `video-${story._id}.mp4`;
+        const localPath = path.join(VIDEO_DIR, fileName);
+        const payload = {
+            status: 'ready',
+            videoUrl: `/videos/${fileName}`,
+            durations: computeDurations(story.scenes),
+            captions: story.scenes.map(s => s.texte)
+        };
+
+        // 1. Déjà compilée -> on la renvoie tout de suite
+        if (fs.existsSync(localPath)) {
+            return res.json(payload);
+        }
+
+        // 2. Compilation en cours ou échouée
+        const job = videoJobs.get(id);
+        if (job && job.status === 'processing') {
+            return res.status(202).json({ status: 'processing' });
+        }
+        if (job && job.status === 'error') {
+            videoJobs.delete(id); // le prochain clic relancera une tentative
+            return res.status(500).json({ status: 'error', error: "La compilation de la vidéo a échoué. Réessayez." });
+        }
+
+        // 3. Lancement de la compilation en arrière-plan (file d'attente)
+        videoJobs.set(id, { status: 'processing' });
+        console.log(`Compilation de la vidéo : ${story.title}`);
+        videoQueue = videoQueue.then(async () => {
+            try {
+                await generateStoryVideo(story.scenes, localPath);
+                videoJobs.delete(id);
+                await pruneVideos(VIDEO_DIR, MAX_CACHED_VIDEOS);
+                console.log(`Vidéo prête : ${fileName}`);
+            } catch (err) {
+                console.error("Erreur FFmpeg :", err);
+                videoJobs.set(id, { status: 'error', error: err.message });
+            }
+        });
+
+        return res.status(202).json({ status: 'processing' });
+    } catch (error) {
+        console.error("Erreur route vidéo :", error);
+        res.status(500).json({ error: "Erreur serveur" });
     }
 });
 
@@ -206,6 +283,9 @@ app.get('/api/stories', async (req, res) => {
 // S'assurer que le dossier public existe
 if (!fs.existsSync('./public/pdfs')){
     fs.mkdirSync('./public/pdfs', { recursive: true });
+}
+if (!fs.existsSync('./public/videos')){
+    fs.mkdirSync('./public/videos', { recursive: true });
 }
 
 connectDB();
@@ -230,12 +310,32 @@ async function runParabolePipeline() {
 
         // 3. Génération des scènes
         console.log("3. Illustration des scènes...");
-        const scenesWithImages = [];
+        const scenesWithImages = [];   // URLs temporaires -> utilisées pour le PDF
+        const scenesForDb = [];        // URLs Cloudinary permanentes -> utilisées pour la vidéo
         for (const scene of storyData.scenes) {
             console.log('Illustration de la scène...');
             // MAGIE ICI : On passe l'URL de la couverture (cloudCoverUrl) comme référence pour garder le même style/personnage !
             const imageUrl = await generateImage(scene.imagePrompt, cloudCoverUrl);
             scenesWithImages.push({ texte: scene.texte, imageUrl });
+
+            // Les URLs de génération sont souvent temporaires : on sécurise chaque scène sur le Cloud
+            let permanentUrl = imageUrl;
+            try {
+                permanentUrl = await uploadImageFromUrl(imageUrl, 'parabole_scenes');
+            } catch (err) {
+                console.error("Sauvegarde cloud de la scène échouée (URL temporaire conservée) :", err.message);
+            }
+
+            // Narration à voix haute (Gemini TTS) : générée UNE fois ici, réutilisée à chaque compilation vidéo
+            let audioUrl, audioDuration;
+            try {
+                console.log('Narration de la scène...');
+                ({ audioUrl, audioDuration } = await narrateAndUpload(scene.texte));
+            } catch (err) {
+                console.error("Narration échouée (la scène sera muette dans la vidéo) :", err.message);
+            }
+
+            scenesForDb.push({ texte: scene.texte, imageUrl: permanentUrl, audioUrl, audioDuration });
         }
 
         // 4. Génération du PDF
@@ -257,7 +357,8 @@ async function runParabolePipeline() {
             title: storyData.titre,
             verse: storyData.verset,
             pdfUrl: cloudPdfUrl,
-            coverImageUrl: cloudCoverUrl
+            coverImageUrl: cloudCoverUrl,
+            scenes: scenesForDb
         });
         await newStory.save();
 
@@ -316,4 +417,5 @@ app.post('/api/generate', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Serveur Parabole en écoute sur le port ${PORT}`);
+    startKeepAlive(); // le site se ping lui-même toutes les 14 min pour ne pas s'endormir
 });
