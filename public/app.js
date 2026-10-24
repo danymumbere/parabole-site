@@ -246,6 +246,7 @@ function closeVideoModal() {
     player.ontimeupdate = null;
     player.removeAttribute('src');
     player.load();
+    document.getElementById('video-download-btn').classList.add('hidden');
     modal.classList.add('hidden');
 }
 
@@ -263,6 +264,9 @@ function openVideoModal(storyId, title) {
     player.removeAttribute('src');
     player.style.display = 'none';
     caption.textContent = '';
+    const dl = document.getElementById('video-download-btn');
+    dl.classList.add('hidden');
+    dl.removeAttribute('href');
     loading.style.display = 'block';
     loading.textContent = "Préparation de la vidéo en cours (cela peut prendre une à deux minutes la première fois)...";
     modal.classList.remove('hidden');
@@ -296,6 +300,14 @@ async function pollVideo(storyId, session, attempt) {
             };
             caption.textContent = data.captions[0] || '';
             player.src = data.videoUrl;
+
+            // Bouton de téléchargement : fichier nommé d'après le titre de l'histoire
+            const dlBtn = document.getElementById('video-download-btn');
+            const rawTitle = document.getElementById('video-modal-title').textContent || 'parabole';
+            const safeName = rawTitle.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, '-').slice(0, 60) || 'parabole';
+            dlBtn.href = data.videoUrl;
+            dlBtn.setAttribute('download', `${safeName}.mp4`);
+            dlBtn.classList.remove('hidden');
             loading.style.display = 'none';
             player.style.display = 'block';
             player.play().catch(() => {}); // la lecture auto peut être refusée : le bouton ▶ reste disponible
